@@ -75,6 +75,30 @@ export interface TimelineEntry {
   highlights: string[];
 }
 
+export interface PortfolioPdfDetails {
+  title: string;
+  subtitle: string;
+  description: string;
+  fileName: string;
+  fileSizeText: string;
+  uploadedAt: string;
+  pdfUrl: string;
+  googleDriveUrl?: string;
+  isCustomUploaded: boolean;
+}
+
+export const DEFAULT_PORTFOLIO_PDF: PortfolioPdfDetails = {
+  title: 'Chaitanya Jain — Comprehensive Design Portfolio & Brand Deck',
+  subtitle: 'Official High-Resolution PDF Presentation for Clients & Creative Directors',
+  description: 'Complete visual identity systems, vector schematics, 3D sublimation jerseys, commercial event branding, and technical design case studies in a unified presentation dossier.',
+  fileName: 'Chaitanya_Jain_Creative_Work_Portfolio.pdf',
+  fileSizeText: '14.8 MB',
+  uploadedAt: 'Updated Recently · Spring 2025',
+  pdfUrl: 'https://drive.google.com/file/d/11p3ISQBihimp6bUkyUd02jTxf0uIvFOf/view?usp=sharing',
+  googleDriveUrl: 'https://drive.google.com/file/d/11p3ISQBihimp6bUkyUd02jTxf0uIvFOf/view?usp=sharing',
+  isCustomUploaded: false
+};
+
 export const PERSONAL_INFO = {
   name: 'CHAITANYA JAIN',
   headline: 'GRAPHIC DESIGNER × CSE STUDENT',

@@ -1,563 +1,668 @@
-import { useState, useRef, useEffect } from 'react';
-import * as THREE from 'three';
-import { DESIGN_CASE_STUDIES, DesignCaseStudy } from '../data/portfolioData';
-import { Sparkles, Maximize2, ChevronLeft, ChevronRight, RotateCcw, X, ArrowUpRight, Layers } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { usePortfolio } from '../context/PortfolioContext';
+import { 
+  FileText, 
+  Download, 
+  Upload, 
+  Maximize2, 
+  ExternalLink, 
+  Share2, 
+  RotateCcw, 
+  Check, 
+  Sparkles, 
+  Layers, 
+  ShieldCheck, 
+  BookOpen, 
+  X, 
+  Link2, 
+  Copy, 
+  ArrowUpRight, 
+  Loader2,
+  FileCheck2,
+  FileDown
+} from 'lucide-react';
 import SectionReveal3D from './SectionReveal3D';
-import CreativeVisual from './CreativeVisual';
+import PdfCanvasViewer from './PdfCanvasViewer';
+
+function getEmbeddablePdfUrl(url: string): string {
+  if (!url) return '';
+  // If it's a Google Drive link, convert to /preview
+  if (url.includes('drive.google.com/file/d/')) {
+    const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://drive.google.com/file/d/${match[1]}/preview`;
+    }
+  }
+  return url;
+}
+
+function getDownloadUrl(url: string): string {
+  if (!url) return '';
+  if (url.includes('drive.google.com/file/d/')) {
+    const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://drive.google.com/uc?export=download&id=${match[1]}`;
+    }
+  }
+  return url;
+}
 
 export default function CreativeSpace() {
-  const mountRef = useRef<HTMLDivElement>(null);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const { 
+    portfolioPdf, 
+    uploadCustomPortfolioPdf, 
+    updatePortfolioPdf, 
+    resetPortfolioPdf 
+  } = usePortfolio();
 
-  // We feature 5 key artworks in the 3D studio
-  const studioArtworks = DESIGN_CASE_STUDIES.slice(0, 5);
-  const currentArtwork = studioArtworks[selectedIndex] || studioArtworks[0];
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isFullscreenReaderOpen, setIsFullscreenReaderOpen] = useState(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [driveInputUrl, setDriveInputUrl] = useState(portfolioPdf?.googleDriveUrl || portfolioPdf?.pdfUrl || '');
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [uploadToast, setUploadToast] = useState<string | null>(null);
 
-  // Canvas texture generator for artworks in Three.js
-  const createArtworkTexture = (study: DesignCaseStudy) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 680;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return new THREE.CanvasTexture(canvas);
+  const embedUrl = getEmbeddablePdfUrl(portfolioPdf?.pdfUrl || '');
+  const downloadUrl = getDownloadUrl(portfolioPdf?.pdfUrl || '');
+  const isDataUrl = portfolioPdf?.pdfUrl?.startsWith('data:');
 
-    // Deep graphite background
-    ctx.fillStyle = '#09090b';
-    ctx.fillRect(0, 0, 512, 680);
-
-    // Grid lines
-    ctx.strokeStyle = '#27272a';
-    ctx.lineWidth = 1;
-    for (let x = 30; x < 512; x += 60) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, 680);
-      ctx.stroke();
-    }
-    for (let y = 30; y < 680; y += 60) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(512, y);
-      ctx.stroke();
-    }
-
-    // Outer silver border
-    ctx.strokeStyle = '#a1a1aa';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(20, 20, 472, 640);
-
-    // Inner subtle border
-    ctx.strokeStyle = '#52525b';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(32, 32, 448, 616);
-
-    // Category banner
-    ctx.fillStyle = '#18181b';
-    ctx.fillRect(40, 50, 432, 36);
-    ctx.fillStyle = '#d4d4d8';
-    ctx.font = 'bold 14px monospace';
-    ctx.fillText(`${study.category.toUpperCase()} · ${study.year}`, 52, 74);
-
-    // Ambient radial glow
-    const grad = ctx.createRadialGradient(256, 300, 20, 256, 300, 180);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(40, 100, 432, 400);
-
-    // Central geometric graphic
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(256, 300, 110, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.strokeStyle = '#71717a';
-    ctx.setLineDash([6, 6]);
-    ctx.beginPath();
-    ctx.arc(256, 300, 75, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Crosshairs
-    ctx.strokeStyle = '#d4d4d8';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(130, 300);
-    ctx.lineTo(382, 300);
-    ctx.moveTo(256, 174);
-    ctx.lineTo(256, 426);
-    ctx.stroke();
-
-    // Title typography
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 28px sans-serif';
-    ctx.textAlign = 'center';
-    const words = study.title.split(' ');
-    if (words.length > 2) {
-      ctx.fillText(words.slice(0, 2).join(' '), 256, 490);
-      ctx.fillText(words.slice(2).join(' '), 256, 524);
-    } else {
-      ctx.fillText(study.title, 256, 505);
-    }
-
-    // Client / context label
-    ctx.fillStyle = '#a1a1aa';
-    ctx.font = '13px monospace';
-    ctx.fillText(study.clientOrContext, 256, 560);
-
-    // Curated mark
-    ctx.fillStyle = '#71717a';
-    ctx.font = '11px monospace';
-    ctx.fillText('DESIGNED BY CHAITANYA JAIN · SATI', 256, 610);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    return texture;
+  const showToast = (msg: string) => {
+    setUploadToast(msg);
+    setTimeout(() => {
+      setUploadToast(null);
+    }, 4000);
   };
 
-  useEffect(() => {
-    const mount = mountRef.current;
-    if (!mount) return;
+  /**
+   * Handle direct PDF file upload from local computer
+   */
+  const handlePdfFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      showToast('⚠️ Please upload a valid PDF file (.pdf).');
       return;
     }
 
-    const width = mount.clientWidth || 800;
-    const height = mount.clientHeight || 520;
+    setIsUploading(true);
+    showToast(`Uploading and processing "${file.name}"...`);
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x060606);
-    scene.fog = new THREE.FogExp2(0x060606, 0.045);
-
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-    camera.position.set(0, 0.2, 7.5);
-
-    let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    } catch {
-      return;
-    }
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const result = reader.result as string;
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+        const sizeText = file.size > 1024 * 1024 ? `${sizeMb} MB` : `${Math.round(file.size / 1024)} KB`;
 
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    mount.appendChild(renderer.domElement);
-
-    // Studio Ambient & Key Spotlights
-    const ambientLight = new THREE.AmbientLight(0x222222, 1.5);
-    scene.add(ambientLight);
-
-    const spotLight = new THREE.SpotLight(0xffffff, 4.5, 20, Math.PI / 4, 0.4, 1.2);
-    spotLight.position.set(0, 6, 6);
-    scene.add(spotLight);
-
-    const rimLight = new THREE.DirectionalLight(0xa1a1aa, 2.0);
-    rimLight.position.set(-6, -2, -3);
-    scene.add(rimLight);
-
-    // Studio Floor Grid in dark graphite
-    const floorGeo = new THREE.PlaneGeometry(30, 30);
-    const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x09090b,
-      roughness: 0.8,
-      metalness: 0.2,
-    });
-    const floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -2.2;
-    scene.add(floor);
-
-    const gridHelper = new THREE.GridHelper(26, 26, 0x3f3f46, 0x18181b);
-    gridHelper.position.y = -2.19;
-    scene.add(gridHelper);
-
-    // Gallery Root Carousel Group
-    const galleryGroup = new THREE.Group();
-    scene.add(galleryGroup);
-
-    // Metallic Framed Artworks arranged in a circular arc
-    const frameMeshes: THREE.Group[] = [];
-    const radius = 4.8;
-    const count = studioArtworks.length;
-    const angleStep = (Math.PI * 2) / count;
-
-    studioArtworks.forEach((study, i) => {
-      const frameGroup = new THREE.Group();
-      const angle = i * angleStep;
-
-      frameGroup.position.x = Math.sin(angle) * radius;
-      frameGroup.position.z = Math.cos(angle) * radius;
-      frameGroup.rotation.y = angle + Math.PI;
-
-      // Chrome Frame Border
-      const frameThickness = 0.08;
-      const frameWidth = 2.4;
-      const frameHeight = 3.2;
-
-      const outerMat = new THREE.MeshStandardMaterial({
-        color: 0xd4d4d8,
-        metalness: 0.95,
-        roughness: 0.15,
-      });
-
-      // Outer metallic bevel
-      const outerGeo = new THREE.BoxGeometry(frameWidth, frameHeight, frameThickness);
-      const outerMesh = new THREE.Mesh(outerGeo, outerMat);
-      frameGroup.add(outerMesh);
-
-      // Artwork Canvas Texture Face
-      const artMat = new THREE.MeshStandardMaterial({
-        map: createArtworkTexture(study),
-        roughness: 0.35,
-        metalness: 0.1,
-      });
-      const artGeo = new THREE.PlaneGeometry(frameWidth - 0.22, frameHeight - 0.22);
-      const artMesh = new THREE.Mesh(artGeo, artMat);
-      artMesh.position.z = frameThickness / 2 + 0.005;
-      frameGroup.add(artMesh);
-
-      // Subtle underglow light for each artwork
-      const frameLight = new THREE.PointLight(0xffffff, 0.8, 4);
-      frameLight.position.set(0, -1.8, 0.5);
-      frameGroup.add(frameLight);
-
-      frameGroup.userData = { index: i, study };
-      galleryGroup.add(frameGroup);
-      frameMeshes.push(frameGroup);
-    });
-
-    // Sparse Floating Silver Dust in Studio Space
-    const dustCount = 80;
-    const dustGeo = new THREE.BufferGeometry();
-    const dustPos = new Float32Array(dustCount * 3);
-    for (let i = 0; i < dustCount; i++) {
-      dustPos[i * 3] = (Math.random() - 0.5) * 12;
-      dustPos[i * 3 + 1] = (Math.random() - 0.5) * 5 + 0.5;
-      dustPos[i * 3 + 2] = (Math.random() - 0.5) * 10;
-    }
-    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
-    const dustMat = new THREE.PointsMaterial({
-      color: 0xe4e4e7,
-      size: 0.04,
-      transparent: true,
-      opacity: 0.6,
-      blending: THREE.AdditiveBlending,
-    });
-    const dust = new THREE.Points(dustGeo, dustMat);
-    scene.add(dust);
-
-    // Drag / Orbit interaction
-    let isUserInteracting = false;
-    let previousMouseX = 0;
-    let targetGalleryRotation = 0;
-    let currentGalleryRotation = 0;
-
-    const onPointerDown = (e: PointerEvent) => {
-      isUserInteracting = true;
-      setIsDragging(true);
-      previousMouseX = e.clientX;
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
-      if (!isUserInteracting) return;
-      const deltaX = e.clientX - previousMouseX;
-      previousMouseX = e.clientX;
-      targetGalleryRotation += deltaX * 0.008;
-    };
-
-    const onPointerUp = () => {
-      if (!isUserInteracting) return;
-      isUserInteracting = false;
-      setIsDragging(false);
-
-      // Snap to closest artwork
-      const normalizedRot = ((-targetGalleryRotation % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-      let closestIdx = Math.round(normalizedRot / angleStep) % count;
-      if (closestIdx < 0) closestIdx += count;
-      setSelectedIndex(closestIdx);
-      targetGalleryRotation = -closestIdx * angleStep;
-    };
-
-    mount.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-
-    // Raycasting to click artwork directly in 3D
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-
-    const onClick = (e: MouseEvent) => {
-      if (isDragging) return;
-      const rect = mount.getBoundingClientRect();
-      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(galleryGroup.children, true);
-
-      if (intersects.length > 0) {
-        let hitObject: THREE.Object3D | null = intersects[0].object;
-        while (hitObject && hitObject.parent && hitObject.parent !== galleryGroup) {
-          hitObject = hitObject.parent;
+        let serverDiskUrl: string | undefined = undefined;
+        try {
+          const res = await fetch('/api/upload/pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pdfBase64: result, fileName: file.name })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.url) serverDiskUrl = data.url;
+          }
+        } catch {
+          // Fallback to client-side IndexedDB storage
         }
-        if (hitObject && hitObject.userData && typeof hitObject.userData.index === 'number') {
-          const clickedIdx = hitObject.userData.index;
-          setSelectedIndex(clickedIdx);
-          targetGalleryRotation = -clickedIdx * angleStep;
-        }
-      }
-    };
 
-    mount.addEventListener('click', onClick);
+        uploadCustomPortfolioPdf({
+          fileName: file.name,
+          fileSizeText: sizeText,
+          pdfUrl: result,
+          googleDriveUrl: serverDiskUrl
+        });
 
-    // Animation loop
-    let animationId: number;
-    let clock = new THREE.Clock();
+        setIsUploading(false);
+        showToast(`✨ "${file.name}" loaded and ready for client review!`);
+      };
 
-    const animate = () => {
-      animationId = requestAnimationFrame(animate);
-      const dt = clock.getDelta();
-      const time = clock.getElapsedTime();
+      reader.onerror = () => {
+        console.error('File reading error');
+        showToast('Could not process PDF file.');
+        setIsUploading(false);
+      };
 
-      // Smooth gallery rotation damping
-      currentGalleryRotation += (targetGalleryRotation - currentGalleryRotation) * 0.08;
-      galleryGroup.rotation.y = currentGalleryRotation;
-
-      // Gentle floating levitation on artworks
-      frameMeshes.forEach((mesh, idx) => {
-        mesh.position.y = Math.sin(time * 1.5 + idx * 1.2) * 0.08;
-      });
-
-      // Subtle dust drift
-      dust.rotation.y = time * 0.02;
-
-      renderer.render(scene, camera);
-    };
-
-    animate();
-
-    const handleResize = () => {
-      if (!mount) return;
-      const w = mount.clientWidth;
-      const h = mount.clientHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      cancelAnimationFrame(animationId);
-      window.removeEventListener('resize', handleResize);
-      mount.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      mount.removeEventListener('click', onClick);
-      if (mount.contains(renderer.domElement)) {
-        mount.removeChild(renderer.domElement);
-      }
-      renderer.dispose();
-      scene.clear();
-    };
-  }, []);
-
-  const handleNext = () => {
-    setSelectedIndex((prev) => (prev + 1) % studioArtworks.length);
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Upload error:', err);
+      showToast('Error uploading PDF file.');
+      setIsUploading(false);
+    } finally {
+      e.target.value = '';
+    }
   };
 
-  const handlePrev = () => {
-    setSelectedIndex((prev) => (prev - 1 + studioArtworks.length) % studioArtworks.length);
+  /**
+   * Handle pasting a Google Drive or Cloud PDF URL
+   */
+  const handleSaveCloudLink = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!driveInputUrl.trim()) return;
+
+    const trimmed = driveInputUrl.trim();
+    uploadCustomPortfolioPdf({
+      fileName: 'Chaitanya_Jain_Design_Portfolio_Client_Deck.pdf',
+      fileSizeText: 'High-Res Cloud PDF',
+      pdfUrl: trimmed,
+      googleDriveUrl: trimmed
+    });
+
+    setIsLinkModalOpen(false);
+    showToast('✨ Linked Google Drive / Cloud portfolio PDF!');
+  };
+
+  /**
+   * Copy shareable link to clipboard
+   */
+  const handleCopyShareLink = () => {
+    const linkToShare = portfolioPdf?.googleDriveUrl || portfolioPdf?.pdfUrl || window.location.href;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(linkToShare);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2500);
+      showToast('🔗 Portfolio PDF link copied to clipboard!');
+    }
   };
 
   return (
-    <section id="creative-space" className="py-28 relative border-t border-white/[0.08] bg-[#050505]">
-      <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
+    <section id="creative-space" className="py-28 relative border-t border-white/[0.08] bg-[#070707] text-[#F5F5F5]">
+      {/* Hidden PDF File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        className="hidden"
+        onChange={handlePdfFileUpload}
+      />
+
+      <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10 space-y-12">
         
         {/* Section Header */}
-        <SectionReveal3D className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
-          <div className="space-y-3">
-            <div className="text-xs font-mono uppercase tracking-widest text-[#C0C0C0] flex items-center gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-[#F5F5F5]" />
-              <span>SIGNATURE FEATURE · 3D EXHIBITION ENVIRONMENT</span>
+        <SectionReveal3D className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-xs font-mono text-[#C0C0C0] tracking-widest uppercase">
+              <Sparkles className="w-4 h-4 text-emerald-400" />
+              <span>CLIENT DOSSIER · EXTENDED PRESENTATION</span>
             </div>
-            <h2 className="text-4xl md:text-6xl font-bold font-display tracking-tight text-[#F5F5F5]">
-              THE CREATIVE SPACE
-            </h2>
-            <p className="text-sm md:text-base text-[#929292] max-w-2xl font-normal leading-relaxed">
-              Explore selected design projects as floating framed artworks in an interactive three-dimensional studio. Drag to orbit the gallery space, focus on individual pieces, or inspect complete case studies.
-            </p>
+
+            {/* Quick Status Pill */}
+            <div className="flex items-center gap-2 px-3 py-1 bg-[#101010] border border-white/15 text-xs font-mono text-zinc-300">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Print & Digital Vector Deck (300 DPI)</span>
+            </div>
           </div>
 
-          {/* Quick HUD Navigation Controls */}
-          <div className="flex items-center gap-2 self-start md:self-auto">
-            <button
-              onClick={handlePrev}
-              className="p-3 bg-[#0a0a0a] border border-white/10 hover:border-white/30 text-[#929292] hover:text-white transition-all cursor-pointer"
-              aria-label="Previous Artwork in 3D Gallery"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+            <div className="space-y-3 max-w-3xl">
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold font-display tracking-tight text-white uppercase">
+                CREATIVE WORK & PORTFOLIO PDF
+              </h2>
+              <p className="text-sm sm:text-base text-[#929292] font-sans leading-relaxed">
+                An exhaustive, high-resolution PDF presentation featuring uncompressed branding systems, vector schematics, 3D sublimation jerseys, commercial event branding, and technical design case studies. Designed for creative directors, agencies, and prospective clients to inspect or download.
+              </p>
+            </div>
 
-            <span className="px-4 py-2.5 bg-[#0e0e0e] border border-white/10 text-xs font-mono text-[#C0C0C0]">
-              {selectedIndex + 1} / {studioArtworks.length}
-            </span>
+            {/* Top Action Buttons (Upload / Link / Reset) */}
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="px-4 py-2.5 bg-white hover:bg-zinc-200 text-black font-bold text-xs font-mono transition-all flex items-center gap-2 cursor-pointer shadow-xl active:scale-95 disabled:opacity-50"
+                title="Upload a new portfolio PDF from your computer"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-black" />
+                    <span>Uploading PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 text-black stroke-[2.5]" />
+                    <span>Upload Portfolio PDF</span>
+                  </>
+                )}
+              </button>
 
-            <button
-              onClick={handleNext}
-              className="p-3 bg-[#0a0a0a] border border-white/10 hover:border-white/30 text-[#929292] hover:text-white transition-all cursor-pointer"
-              aria-label="Next Artwork in 3D Gallery"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDriveInputUrl(portfolioPdf?.googleDriveUrl || portfolioPdf?.pdfUrl || '');
+                  setIsLinkModalOpen(true);
+                }}
+                className="px-3.5 py-2.5 bg-[#121212] hover:bg-white/10 text-zinc-200 border border-white/20 text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+                title="Paste a Google Drive or Cloud PDF link"
+              >
+                <Link2 className="w-3.5 h-3.5 text-zinc-400" />
+                <span className="hidden sm:inline">Link Cloud PDF</span>
+              </button>
+
+              {portfolioPdf?.isCustomUploaded && (
+                <button
+                  type="button"
+                  onClick={resetPortfolioPdf}
+                  className="px-3 py-2.5 bg-zinc-900/80 hover:bg-red-950 text-zinc-400 hover:text-red-200 border border-white/10 hover:border-red-500/40 text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Reset to default portfolio dossier"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-zinc-400" />
+                  <span className="hidden sm:inline">Reset</span>
+                </button>
+              )}
+            </div>
           </div>
         </SectionReveal3D>
 
-        {/* 3D Studio Canvas Container */}
+        {/* Embedded Interactive PDF Reader Card */}
         <SectionReveal3D delay={0.1}>
-          <div className="relative w-full h-[520px] md:h-[620px] bg-[#060606] border border-white/15 overflow-hidden shadow-2xl group">
+          <div className="relative bg-[#0d0d0d] border border-white/20 shadow-2xl overflow-hidden">
             
-            {/* Corner Precision Marks */}
-            <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-[#C0C0C0] pointer-events-none z-20" />
-            <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-[#C0C0C0] pointer-events-none z-20" />
-            <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-[#C0C0C0] pointer-events-none z-20" />
-            <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-[#C0C0C0] pointer-events-none z-20" />
+            {/* Top Metallic Border Accent */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[#C0C0C0] to-transparent z-20 pointer-events-none" />
 
-            {/* Top Studio HUD */}
-            <div className="absolute top-4 left-5 right-5 flex items-center justify-between pointer-events-none z-20">
-              <div className="flex items-center gap-2.5 px-3 py-1 bg-black/80 backdrop-blur-md border border-white/10 text-[10px] font-mono text-[#C0C0C0] tracking-wider">
-                <span className="w-2 h-2 rounded-full bg-[#C0C0C0] animate-pulse" />
-                <span>3D STUDIO · ORBITAL GALLERY</span>
+            {/* Corner Ticks */}
+            <div className="absolute top-0 left-0 w-2.5 h-2.5 border-t-2 border-l-2 border-white/50 z-20 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-2.5 h-2.5 border-t-2 border-r-2 border-white/50 z-20 pointer-events-none" />
+
+            {/* Reader Toolbar / Header */}
+            <div className="p-4 sm:p-5 bg-[#141414] border-b border-white/15 flex flex-wrap items-center justify-between gap-4">
+              
+              {/* Document Info */}
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-950/40 border border-red-500/40 flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5 text-red-400" />
+                </div>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold font-mono text-white tracking-wide truncate max-w-[280px] sm:max-w-md">
+                      {portfolioPdf?.fileName || 'Chaitanya_Jain_Creative_Work_Portfolio.pdf'}
+                    </h3>
+                    <span className="text-[10px] px-2 py-0.5 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-mono hidden sm:inline-block">
+                      CLIENT READY
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-400">
+                    <span>{portfolioPdf?.fileSizeText || '14.8 MB'}</span>
+                    <span>·</span>
+                    <span>{portfolioPdf?.uploadedAt || 'Official Release'}</span>
+                    {portfolioPdf?.isCustomUploaded && (
+                      <>
+                        <span>·</span>
+                        <span className="text-amber-400">Custom Upload</span>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-black/80 backdrop-blur-md border border-white/10 text-[10px] font-mono text-[#929292]">
-                <span>DRAG TO ROTATE · CLICK ARTWORK TO INSPECT</span>
+
+              {/* Reader Action Controls */}
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                {/* Fullscreen Reading Mode */}
+                <button
+                  type="button"
+                  onClick={() => setIsFullscreenReaderOpen(true)}
+                  className="px-3 py-1.5 bg-[#1e1e1e] hover:bg-white hover:text-black text-zinc-200 border border-white/20 text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                  title="Expand to distraction-free fullscreen reader"
+                >
+                  <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Read Fullscreen</span>
+                </button>
+
+                {/* Direct Download Button */}
+                {isDataUrl ? (
+                  <a
+                    href={portfolioPdf.pdfUrl}
+                    download={portfolioPdf.fileName || 'Chaitanya_Jain_Portfolio.pdf'}
+                    className="px-3 py-1.5 bg-white hover:bg-zinc-200 text-black font-semibold text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    title="Download PDF directly to your device"
+                  >
+                    <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Download PDF</span>
+                  </a>
+                ) : (
+                  <a
+                    href={downloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-white hover:bg-zinc-200 text-black font-semibold text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    title="Download PDF directly to your device"
+                  >
+                    <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Download PDF</span>
+                  </a>
+                )}
+
+                {/* Open in New Window */}
+                <a
+                  href={portfolioPdf?.pdfUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-2 bg-[#1a1a1a] hover:bg-white/20 text-zinc-300 hover:text-white border border-white/20 text-xs transition-colors cursor-pointer"
+                  title="Open PDF in a new browser tab"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+
+                {/* Share Link */}
+                <button
+                  type="button"
+                  onClick={handleCopyShareLink}
+                  className="p-2 bg-[#1a1a1a] hover:bg-white/20 text-zinc-300 hover:text-white border border-white/20 text-xs transition-colors cursor-pointer"
+                  title="Copy shareable link for clients"
+                >
+                  {copySuccess ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                  ) : (
+                    <Share2 className="w-3.5 h-3.5" />
+                  )}
+                </button>
               </div>
             </div>
 
-            {/* WebGL Mount for Three.js */}
-            <div
-              ref={mountRef}
-              className="w-full h-full cursor-grab active:cursor-grabbing relative z-10"
-              aria-label="Interactive 3D Art Gallery Room"
-              role="img"
-            />
-
-            {/* Bottom Overlay: Focused Artwork Data Card */}
-            <div className="absolute bottom-6 left-6 right-6 md:left-8 md:right-auto md:max-w-md bg-[#0a0a0a]/95 backdrop-blur-md border border-white/20 p-5 md:p-6 z-20 shadow-2xl space-y-3">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-[10px] font-mono tracking-widest uppercase text-[#C0C0C0] px-2 py-0.5 bg-[#141414] border border-white/10">
-                  {currentArtwork.category}
-                </span>
-                <span className="text-[10px] font-mono text-[#929292]">
-                  {currentArtwork.year}
-                </span>
-              </div>
-
-              <div>
-                <h3 className="text-lg md:text-xl font-bold font-display text-[#F5F5F5]">
-                  {currentArtwork.title}
-                </h3>
-                <p className="text-xs text-[#929292] line-clamp-2 mt-1">
-                  {currentArtwork.brief}
-                </p>
-              </div>
-
-              <div className="pt-2 flex items-center gap-3">
-                <button
-                  onClick={() => setIsModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-[#F5F5F5] hover:bg-[#C0C0C0] text-black text-xs font-mono font-semibold transition-all cursor-pointer"
-                >
-                  <span>INSPECT CASE STUDY</span>
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                </button>
-
-                <div className="text-[10px] font-mono text-zinc-500">
-                  {currentArtwork.clientOrContext}
+            {/* Embedded PDF Canvas Viewer Viewport */}
+            <div className="relative w-full h-[620px] sm:h-[720px] bg-[#080808] overflow-hidden flex flex-col">
+              {portfolioPdf?.pdfUrl ? (
+                <PdfCanvasViewer
+                  pdfUrl={portfolioPdf.pdfUrl}
+                  fileName={portfolioPdf.fileName || 'Portfolio_Document.pdf'}
+                  downloadUrl={downloadUrl}
+                  isDataUrl={isDataUrl}
+                  onToggleFullscreen={() => setIsFullscreenReaderOpen(true)}
+                  isFullscreen={false}
+                  className="w-full h-full"
+                />
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
+                  <FileText className="w-12 h-12 text-zinc-600" />
+                  <div className="space-y-1">
+                    <p className="text-base font-bold font-mono text-white">No PDF currently linked</p>
+                    <p className="text-xs text-zinc-400 font-sans max-w-sm">
+                      Upload your creative work PDF above so clients and creative directors can read your complete detailed portfolio.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 bg-white text-black font-bold text-xs font-mono cursor-pointer"
+                  >
+                    Upload Portfolio PDF
+                  </button>
                 </div>
+              )}
+            </div>
+          </div>
+        </SectionReveal3D>
+
+        {/* What's Inside Callouts: Tailored for Creative Work Clients */}
+        <SectionReveal3D delay={0.2} className="space-y-6 pt-4">
+          <div className="border-b border-white/10 pb-3 flex items-center justify-between">
+            <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-[#C0C0C0] flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-emerald-400" />
+              <span>WHAT&apos;S INSIDE THIS PDF DOSSIER</span>
+            </h3>
+            <span className="text-[11px] font-mono text-zinc-500">Comprehensive Creative Scope</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            {/* Column 1: Brand Identity */}
+            <div className="p-6 bg-[#0c0c0c] border border-white/10 hover:border-white/30 transition-all space-y-3 shadow-lg group">
+              <div className="flex items-center justify-between text-xs font-mono text-zinc-400 border-b border-white/10 pb-3">
+                <span className="text-emerald-400 font-bold">SECTION 01</span>
+                <span>IDENTITY SYSTEMS</span>
               </div>
+              <h4 className="text-lg font-bold font-display text-white group-hover:text-zinc-200 transition-colors">
+                Brand Architecture & Logomarks
+              </h4>
+              <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+                Full 12-column isometric construction grids, minimum clear space guidelines, color balance formulas (CMYK, Pantone, RGB, HEX), and responsive horizontal & stacked mark configurations.
+              </p>
+              <ul className="text-[11px] font-mono text-zinc-300 space-y-1 pt-2">
+                <li className="flex items-center gap-2">
+                  <span className="w-1 h-1 bg-white/50" />
+                  <span>Aura Studio identity guidelines</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1 h-1 bg-white/50" />
+                  <span>Collegiate tech summit vector emblems</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Column 2: Esports & Apparel */}
+            <div className="p-6 bg-[#0c0c0c] border border-white/10 hover:border-white/30 transition-all space-y-3 shadow-lg group">
+              <div className="flex items-center justify-between text-xs font-mono text-zinc-400 border-b border-white/10 pb-3">
+                <span className="text-emerald-400 font-bold">SECTION 02</span>
+                <span>APPAREL & MERCH</span>
+              </div>
+              <h4 className="text-lg font-bold font-display text-white group-hover:text-zinc-200 transition-colors">
+                3D Sublimation Jerseys & Merchandise
+              </h4>
+              <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+                Photorealistic athletic garment mockups, vector dye-sublimation pattern schematics, breathable fabric print specifications, and commercial sponsor lockup configurations.
+              </p>
+              <ul className="text-[11px] font-mono text-zinc-300 space-y-1 pt-2">
+                <li className="flex items-center gap-2">
+                  <span className="w-1 h-1 bg-white/50" />
+                  <span>Axe Owner custom 3D jersey apparel</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1 h-1 bg-white/50" />
+                  <span>Apex Esports League broadcast tournament kit</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Column 3: Event Key Visuals & Posters */}
+            <div className="p-6 bg-[#0c0c0c] border border-white/10 hover:border-white/30 transition-all space-y-3 shadow-lg group">
+              <div className="flex items-center justify-between text-xs font-mono text-zinc-400 border-b border-white/10 pb-3">
+                <span className="text-emerald-400 font-bold">SECTION 03</span>
+                <span>KEY VISUALS & POSTERS</span>
+              </div>
+              <h4 className="text-lg font-bold font-display text-white group-hover:text-zinc-200 transition-colors">
+                Collegiate Techfest & Event Graphics
+              </h4>
+              <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+                Print-ready A2 & A3 high DPI event posters, stage backdrops, multi-slide social announcement carousels, and high-impact digital campaign visual assets.
+              </p>
+              <ul className="text-[11px] font-mono text-zinc-300 space-y-1 pt-2">
+                <li className="flex items-center gap-2">
+                  <span className="w-1 h-1 bg-white/50" />
+                  <span>SATI Vidisha Techfest complete visual identity</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1 h-1 bg-white/50" />
+                  <span>Creator YouTube thumbnails & digital assets</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </SectionReveal3D>
+
+        {/* Client Inquiry Strip */}
+        <SectionReveal3D delay={0.25}>
+          <div className="p-6 sm:p-8 bg-[#101010] border border-white/15 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+            <div className="space-y-1">
+              <h4 className="text-base font-bold font-display text-white tracking-wide">
+                NEED A TAILORED CLIENT PITCH DECK OR BESPOKE DESIGN PROPOSAL?
+              </h4>
+              <p className="text-xs text-zinc-400 font-sans">
+                Available for branding commissions, commercial tournament graphics, athletic merchandise, and visual direction.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              <a
+                href="#contact"
+                className="px-5 py-2.5 bg-white hover:bg-zinc-200 text-black font-bold text-xs font-mono transition-colors flex items-center gap-2 shadow-lg"
+              >
+                <span>Inquire About Design Projects</span>
+                <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
+              </a>
             </div>
           </div>
         </SectionReveal3D>
       </div>
 
-      {/* Case Study Modal from 3D Gallery */}
-      {isModalOpen && currentArtwork && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-10 bg-black/90 backdrop-blur-md overflow-y-auto"
+      {/* FULLSCREEN DISTRACTION-FREE PDF READER MODAL */}
+      {isFullscreenReaderOpen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col overflow-hidden"
           role="dialog"
-          aria-modal="true"
+          aria-label="Fullscreen Portfolio PDF Reader"
         >
-          <div
-            className="fixed inset-0"
-            onClick={() => setIsModalOpen(false)}
-            aria-hidden="true"
-          />
-
-          <div className="relative w-full max-w-4xl bg-[#0c0c0c] border border-white/20 shadow-2xl my-auto z-10 overflow-hidden text-[#F5F5F5]">
-            <div className="p-6 md:p-8 border-b border-white/10 flex items-center justify-between bg-[#101010]">
-              <div className="space-y-1">
-                <span className="text-xs font-mono uppercase tracking-widest text-[#C0C0C0]">
-                  {currentArtwork.category} · {currentArtwork.year}
-                </span>
-                <h3 className="text-2xl md:text-3xl font-bold font-display text-white">
-                  {currentArtwork.title}
-                </h3>
+          {/* Header Toolbar */}
+          <div className="p-4 bg-[#0d0d0d] border-b border-white/15 flex items-center justify-between gap-4 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-red-950/60 border border-red-500/40 flex items-center justify-center shrink-0">
+                <FileText className="w-4 h-4 text-red-400" />
               </div>
+              <div className="space-y-0.5">
+                <p className="text-xs sm:text-sm font-bold font-mono text-white truncate max-w-[240px] sm:max-w-lg">
+                  {portfolioPdf?.fileName || 'Chaitanya_Jain_Creative_Work_Portfolio.pdf'}
+                </p>
+                <span className="text-[10px] font-mono text-zinc-400 block">
+                  Fullscreen Client Presentation · {portfolioPdf?.fileSizeText || '14.8 MB'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {isDataUrl ? (
+                <a
+                  href={portfolioPdf.pdfUrl}
+                  download={portfolioPdf.fileName || 'Chaitanya_Jain_Portfolio.pdf'}
+                  className="px-3 py-1.5 bg-white hover:bg-zinc-200 text-black font-bold text-xs font-mono transition-colors flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span className="hidden sm:inline">Download</span>
+                </a>
+              ) : (
+                <a
+                  href={downloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 bg-white hover:bg-zinc-200 text-black font-bold text-xs font-mono transition-colors flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span className="hidden sm:inline">Download</span>
+                </a>
+              )}
+
+              <a
+                href={portfolioPdf?.pdfUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2 bg-[#1a1a1a] hover:bg-white/20 text-zinc-200 border border-white/20 text-xs transition-colors"
+                title="Open in new window"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+
               <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-2.5 text-[#929292] hover:text-white border border-white/10 hover:border-white/30 transition-all cursor-pointer bg-[#0a0a0a]"
-                aria-label="Close Case Study"
+                type="button"
+                onClick={() => setIsFullscreenReaderOpen(false)}
+                className="p-2 bg-[#222] hover:bg-red-950 hover:text-red-200 text-zinc-200 border border-white/20 text-xs transition-colors cursor-pointer ml-1"
+                title="Close Fullscreen (Esc)"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+          </div>
 
-            <div className="p-6 md:p-8 space-y-6 max-h-[75vh] overflow-y-auto">
-              <div className="border border-white/10 bg-black overflow-hidden relative shadow-inner">
-                <CreativeVisual
-                  type={currentArtwork.svgVisualType}
-                  title={currentArtwork.title}
-                  isLightbox={true}
-                />
+          {/* Fullscreen Canvas Viewport */}
+          <div className="flex-1 w-full bg-[#050505] overflow-hidden">
+            {portfolioPdf?.pdfUrl && (
+              <PdfCanvasViewer
+                pdfUrl={portfolioPdf.pdfUrl}
+                fileName={portfolioPdf.fileName || 'Portfolio_Document.pdf'}
+                downloadUrl={downloadUrl}
+                isDataUrl={isDataUrl}
+                onToggleFullscreen={() => setIsFullscreenReaderOpen(false)}
+                isFullscreen={true}
+                className="w-full h-full"
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CLOUD / GOOGLE DRIVE LINK MODAL */}
+      {isLinkModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={() => setIsLinkModalOpen(false)}
+        >
+          <div 
+            className="bg-[#0e0e0e] border border-white/25 max-w-lg w-full p-6 sm:p-7 space-y-5 shadow-2xl font-mono text-zinc-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="space-y-1">
+                <span className="text-[10px] uppercase tracking-widest text-emerald-400 font-bold block">
+                  CLOUD DOCUMENT SYNC
+                </span>
+                <h4 className="text-base font-bold text-white">
+                  Link Google Drive / Cloud PDF
+                </h4>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-white/10 text-sm">
-                <div>
-                  <h4 className="text-xs font-mono uppercase text-[#C0C0C0] mb-2">Project Brief</h4>
-                  <p className="text-xs sm:text-sm text-[#929292] leading-relaxed">{currentArtwork.brief}</p>
-                </div>
-                <div>
-                  <h4 className="text-xs font-mono uppercase text-[#C0C0C0] mb-2">Client / Context</h4>
-                  <p className="text-xs sm:text-sm text-white font-medium">{currentArtwork.clientOrContext}</p>
-                  <h4 className="text-xs font-mono uppercase text-[#C0C0C0] mt-4 mb-2">Deliverables</h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {currentArtwork.deliverables.map((item, i) => (
-                      <span key={i} className="px-2.5 py-1 bg-[#141414] border border-white/10 text-xs font-mono text-white">
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 md:p-6 border-t border-white/10 bg-[#101010] flex items-center justify-between">
-              <span className="text-xs font-mono text-[#929292]">
-                INSPECTED VIA 3D CREATIVE SPACE
-              </span>
               <button
-                onClick={() => setIsModalOpen(false)}
-                className="px-5 py-2 bg-[#F5F5F5] hover:bg-[#C0C0C0] text-black text-xs font-mono font-semibold transition-colors cursor-pointer"
+                type="button"
+                onClick={() => setIsLinkModalOpen(false)}
+                className="p-1.5 text-zinc-400 hover:text-white border border-white/10 cursor-pointer"
               >
-                Close View
+                <X className="w-4 h-4" />
               </button>
             </div>
+
+            <form onSubmit={handleSaveCloudLink} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs text-zinc-400 block">
+                  Paste Google Drive view/share link or public PDF URL:
+                </label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://drive.google.com/file/d/.../view?usp=sharing"
+                  value={driveInputUrl}
+                  onChange={(e) => setDriveInputUrl(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-black border border-white/20 text-white text-xs font-mono focus:border-white focus:outline-none transition-colors"
+                />
+                <p className="text-[11px] text-zinc-500 font-sans">
+                  Tip: Ensure your Google Drive sharing setting is set to &quot;Anyone with the link can view&quot;. The system will automatically configure it for the embedded reader.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setIsLinkModalOpen(false)}
+                  className="px-4 py-2 text-xs border border-white/20 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-white text-black font-bold text-xs hover:bg-zinc-200 transition-colors cursor-pointer"
+                >
+                  Save & Link PDF
+                </button>
+              </div>
+            </form>
           </div>
+        </div>
+      )}
+
+      {/* Upload Toast */}
+      {uploadToast && (
+        <div className="fixed bottom-8 right-8 z-50 bg-[#121212] border border-white/25 px-4 py-3 shadow-2xl text-xs font-mono text-white flex items-center gap-2.5">
+          <FileCheck2 className="w-4 h-4 text-emerald-400" />
+          <span>{uploadToast}</span>
         </div>
       )}
     </section>

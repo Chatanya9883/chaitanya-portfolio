@@ -11,7 +11,9 @@ import {
   TechnicalProject,
   AcademicItem,
   SkillCategory,
-  TimelineEntry
+  TimelineEntry,
+  PortfolioPdfDetails,
+  DEFAULT_PORTFOLIO_PDF
 } from '../data/portfolioData';
 import { saveToIndexedDB, loadFromIndexedDB } from '../utils/indexedDbStorage';
 
@@ -23,6 +25,7 @@ interface PortfolioState {
   technicalProjects: TechnicalProject[];
   academicItems: AcademicItem[];
   timelineData: TimelineEntry[];
+  portfolioPdf?: PortfolioPdfDetails;
   sectionVisibility: Record<string, boolean>;
   sectionOrder: string[];
   sectionStyles: Record<string, { bg?: string; padding?: string }>;
@@ -36,6 +39,7 @@ const DEFAULT_STATE: PortfolioState = {
   technicalProjects: TECHNICAL_PROJECTS,
   academicItems: ACADEMIC_ITEMS,
   timelineData: TIMELINE_DATA,
+  portfolioPdf: DEFAULT_PORTFOLIO_PDF,
   sectionVisibility: {
     hero: true,
     'creative-work': true,
@@ -111,6 +115,10 @@ interface PortfolioContextType {
   importJSON: (jsonString: string) => boolean;
   saveToPermanentMemory: () => Promise<boolean>;
   isPermanentMemorySaving: boolean;
+  portfolioPdf: PortfolioPdfDetails;
+  updatePortfolioPdf: (updated: Partial<PortfolioPdfDetails>) => void;
+  uploadCustomPortfolioPdf: (details: { fileName: string; fileSizeText: string; pdfUrl: string; googleDriveUrl?: string }) => void;
+  resetPortfolioPdf: () => void;
 }
 
 const PortfolioContext = createContext<PortfolioContextType | undefined>(undefined);
@@ -204,6 +212,7 @@ function migratePortfolioState(raw: PortfolioState): PortfolioState {
     technicalProjects: finalTech,
     academicItems: finalAcademic,
     timelineData: finalTimeline,
+    portfolioPdf: raw.portfolioPdf || DEFAULT_PORTFOLIO_PDF,
     skillCategories: (raw.skillCategories && Array.isArray(raw.skillCategories) && raw.skillCategories.length > 0)
       ? raw.skillCategories
       : DEFAULT_STATE.skillCategories
@@ -267,6 +276,20 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
   const [isPermanentMemorySaving, setIsPermanentMemorySaving] = useState<boolean>(false);
+
+  const [portfolioPdf, setPortfolioPdf] = useState<PortfolioPdfDetails>(() => {
+    return state.portfolioPdf || DEFAULT_PORTFOLIO_PDF;
+  });
+
+  // Load custom portfolio PDF from IndexedDB if stored persistently
+  useEffect(() => {
+    loadFromIndexedDB<PortfolioPdfDetails>('chaitanya_custom_portfolio_pdf').then((saved) => {
+      if (saved && (saved.pdfUrl || saved.googleDriveUrl)) {
+        setPortfolioPdf(saved);
+        setState((prev) => ({ ...prev, portfolioPdf: saved }));
+      }
+    });
+  }, []);
 
   function safeSavePortfolioState(st: PortfolioState) {
     try {
@@ -635,6 +658,52 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     pushHistory(newState);
   };
 
+  const updatePortfolioPdf = (updated: Partial<PortfolioPdfDetails>) => {
+    const merged: PortfolioPdfDetails = {
+      ...(state.portfolioPdf || portfolioPdf || DEFAULT_PORTFOLIO_PDF),
+      ...updated
+    };
+    setPortfolioPdf(merged);
+    saveToIndexedDB('chaitanya_custom_portfolio_pdf', merged);
+    const newState = {
+      ...state,
+      portfolioPdf: merged
+    };
+    pushHistory(newState);
+    triggerToast('📄 Portfolio PDF details updated!');
+  };
+
+  const uploadCustomPortfolioPdf = (details: { fileName: string; fileSizeText: string; pdfUrl: string; googleDriveUrl?: string }) => {
+    const newPdf: PortfolioPdfDetails = {
+      ...DEFAULT_PORTFOLIO_PDF,
+      fileName: details.fileName,
+      fileSizeText: details.fileSizeText,
+      pdfUrl: details.pdfUrl,
+      googleDriveUrl: details.googleDriveUrl || (details.pdfUrl.startsWith('http') ? details.pdfUrl : DEFAULT_PORTFOLIO_PDF.googleDriveUrl),
+      uploadedAt: `Uploaded on ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+      isCustomUploaded: true
+    };
+    setPortfolioPdf(newPdf);
+    saveToIndexedDB('chaitanya_custom_portfolio_pdf', newPdf);
+    const newState = {
+      ...state,
+      portfolioPdf: newPdf
+    };
+    pushHistory(newState);
+    triggerToast('✨ Successfully uploaded your portfolio PDF! Ready for client review.');
+  };
+
+  const resetPortfolioPdf = () => {
+    setPortfolioPdf(DEFAULT_PORTFOLIO_PDF);
+    saveToIndexedDB('chaitanya_custom_portfolio_pdf', DEFAULT_PORTFOLIO_PDF);
+    const newState = {
+      ...state,
+      portfolioPdf: DEFAULT_PORTFOLIO_PDF
+    };
+    pushHistory(newState);
+    triggerToast('↩️ Restored default portfolio PDF presentation.');
+  };
+
   const updateEducation = (edu: Partial<typeof ABOUT_DETAILS.education>) => {
     const newState = {
       ...state,
@@ -846,7 +915,11 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       exportJSON,
       importJSON,
       saveToPermanentMemory,
-      isPermanentMemorySaving
+      isPermanentMemorySaving,
+      portfolioPdf: state.portfolioPdf || portfolioPdf || DEFAULT_PORTFOLIO_PDF,
+      updatePortfolioPdf,
+      uploadCustomPortfolioPdf,
+      resetPortfolioPdf
     }}>
       {children}
 

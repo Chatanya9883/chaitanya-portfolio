@@ -56,6 +56,31 @@ function saveBase64ImageToDisk(base64Data: string, preferredId?: string): string
   }
 }
 
+function saveBase64PdfToDisk(base64Data: string, originalFileName?: string): string | null {
+  try {
+    if (!base64Data || typeof base64Data !== 'string') return null;
+    let rawBase64 = base64Data;
+    const match = base64Data.match(/^data:application\/pdf;base64,(.+)$/);
+    if (match) {
+      rawBase64 = match[1];
+    } else if (base64Data.includes(';base64,')) {
+      rawBase64 = base64Data.split(';base64,')[1];
+    }
+
+    const cleanBaseName = (originalFileName || 'portfolio_dossier.pdf')
+      .replace(/[^a-zA-Z0-9._-]/g, '_');
+    const finalName = cleanBaseName.toLowerCase().endsWith('.pdf') ? cleanBaseName : `${cleanBaseName}.pdf`;
+    const filePath = path.resolve(UPLOADS_DIR, finalName);
+
+    const buffer = Buffer.from(rawBase64, 'base64');
+    fs.writeFileSync(filePath, buffer);
+    return `/uploads/${finalName}`;
+  } catch (err) {
+    console.error('Failed to save PDF to disk:', err);
+    return null;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -102,6 +127,26 @@ async function startServer() {
     } catch (err) {
       console.error('Error saving image to disk in /api/upload/image:', err);
       return res.status(500).json({ error: 'Failed to save image to permanent storage' });
+    }
+  });
+
+  // Permanent Storage: Upload & Persist PDF to Server Disk
+  app.post('/api/upload/pdf', (req, res) => {
+    try {
+      const { pdfBase64, fileName } = req.body;
+      if (!pdfBase64) {
+        return res.status(400).json({ error: 'pdfBase64 is required' });
+      }
+
+      const diskUrl = saveBase64PdfToDisk(pdfBase64, fileName);
+      if (!diskUrl) {
+        return res.status(500).json({ error: 'Failed to write PDF to permanent disk storage' });
+      }
+
+      return res.json({ success: true, url: diskUrl, fileName });
+    } catch (err: any) {
+      console.error('Error in /api/upload/pdf:', err);
+      return res.status(500).json({ error: err.message || 'Server error writing PDF' });
     }
   });
 

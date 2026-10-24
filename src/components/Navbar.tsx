@@ -40,7 +40,7 @@ export default function Navbar({ onOpenResume }: NavbarProps) {
 
   const navLinks = [
     { label: 'Work', href: '#creative-work', id: 'creative-work' },
-    { label: '3D Studio', href: '#creative-space', id: 'creative-space' },
+    { label: 'Portfolio PDF', href: '#creative-space', id: 'creative-space' },
     { label: 'Tech', href: '#development', id: 'development' },
     { label: 'Academic', href: '#academic', id: 'academic' },
     { label: 'About', href: '#about', id: 'about' },
